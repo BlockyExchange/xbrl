@@ -1,0 +1,14 @@
+http://wallet.xbrl.blocky.com.br {
+    encode gzip zstd
+    reverse_proxy http://xbrl-wallet:80
+}
+
+http://explorer.xbrl.blocky.com.br {
+    encode gzip zstd
+    reverse_proxy http://xbrl-explorer:80
+}
+
+http://blockycon.blocky.com.br {
+    encode gzip zstd
+    reverse_proxy http://xbrl-blockycon:5000
+}
