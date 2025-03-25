@@ -16,3 +16,5 @@ data/xbrl-pippin-data
 data/xbrl-node-data
 !data/xbrl-node-data/config-node.toml
 !data/xbrl-node-data/config-rpc.toml
+
+.DS_Store
