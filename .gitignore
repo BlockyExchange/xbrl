@@ -1,0 +1,18 @@
+# These are the configuration files for the node rpc proxy configuration
+config/xbrl-node-rpc-proxy/*
+!config/xbrl-node-rpc-proxy/settings.json
+!config/xbrl-node-rpc-proxy/pow_creds.json
+
+# These are for the redis and mongodb, cached...
+data/xbrl-explorer-mongodb
+data/xbrl-explorer-redis
+
+# This is the pippin data, it shouldn't be tracked by git, it will contain sensitive data
+data/xbrl-pippin-data
+
+# This is the xbrl-node-data, it also can contain sensitive data, such as wallets and private keys
+# It also will contain the entire ledger
+# But you may want to track your node config
+data/xbrl-node-data
+!data/xbrl-node-data/config-node.toml
+!data/xbrl-node-data/config-rpc.toml
