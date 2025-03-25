@@ -1,0 +1,6 @@
+{
+    "work_server": {
+      "url": "http://xbrl-work-server",
+      "port": "7013"
+    }
+  }
