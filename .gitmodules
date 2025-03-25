@@ -1,0 +1,18 @@
+[submodule "modules/xbrl-node"]
+	path = modules/xbrl-node
+	url = git@github.com:BlockyExchange/xbrl-node.git
+[submodule "modules/xbrl-pippin"]
+	path = modules/xbrl-pippin
+	url = git@github.com:BlockyExchange/xbrl-pippin.git
+[submodule "modules/xbrl-explorer"]
+	path = modules/xbrl-explorer
+	url = git@github.com:BlockyExchange/xbrl-explorer.git
+[submodule "modules/xbrl-wallet"]
+	path = modules/xbrl-wallet
+	url = git@github.com:BlockyExchange/xbrl-wallet.git
+[submodule "modules/xbrl-work-server"]
+	path = modules/xbrl-work-server
+	url = git@github.com:BlockyExchange/xbrl-work-server.git
+[submodule "modules/xbrl-blockycon"]
+	path = modules/xbrl-blockycon
+	url = git@github.com:BlockyExchange/xbrl-blockycon.git
