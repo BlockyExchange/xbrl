@@ -1,0 +1,291 @@
+version: '3.8'
+
+services:
+
+  xbrl-node:
+    image: registry.blocky.com.br/xbrl-node:latest
+    build:
+      context: ./modules/xbrl-node
+      dockerfile: ./docker/node/Dockerfile
+
+    container_name: xbrl_node
+    restart: unless-stopped
+    ports:
+      - "[::1]:7015:7015" # peering.xbrl.blocky.com.br
+    #  - "127.0.0.1:7011:7016" # This should be disabled in production
+    volumes:
+      - ./data/xbrl-node-data:/root/Nano
+    environment:
+      - NANO_DEFAULT_PEER=peering.xbrl.blocky.com.br
+      - PRECONFIGURED_PEERS=A41554BDD232695188F8DABF364A88C1ADB8DB63840050BE41D5FB31489F5A82,A41554BDDEDE9DBF00073CE9D8DC4D866054241BB5C614687B7C5501FA714E25
+      - NODE_PORT=7015
+      - RPC_PORT=7016
+      - WEBSOCKET_PORT=7018
+      - NANO_WORKING_APP_PATH=Nano
+    networks:
+      - xbrl-proxy-node-net
+      - xbrl-pippin-node-net
+      - xbrl-node-rpc-proxy-node-net
+    healthcheck: 
+      test: ["CMD", "perl", "-MIO::Socket::INET", "-e", "$s=IO::Socket::INET->new('127.0.0.1:7016') or exit 1; print $s \"POST / HTTP/1.1\\r\\nHost: 127.0.0.1:7016\\r\\nContent-Type: application/json\\r\\nContent-Length: 24\\r\\nConnection: close\\r\\n\\r\\n{\\\"action\\\":\\\"block_count\\\"}\"; $s->shutdown(1); @res=<$s>; exit($res[0] =~ /^HTTP\\/1\\.1 200 OK/ ? 0 : 1);"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    #entrypoint: ["sleep", "infinity"]
+  xbrl-explorer:
+    image: registry.blocky.com.br/xbrl-explorer:latest
+    build: ./modules/xbrl-explorer
+    container_name: xbrl_explorer
+    environment:
+      - SERVER_PORT=80
+      - RPC_DOMAIN=https://rpc.xbrl.blocky.com.br
+      - NODE_FOLDER=
+      - MONGO_USER=root
+      - MONGO_PASSWORD=example
+      - SENTRY_DNS=
+      - IPAPI_KEY=
+      - YOUTUBE_CREDENTIAL=
+      - GOOGLE_APPLICATION_CREDENTIALS=
+      - REDIS_PORT=6379
+      - REDIS_HOST=xbrl-explorer-redis
+      - REDIS_PASSWORD=
+      - MONGO_HOSTNAME=xbrl-explorer-mongodb
+      - MONGO_PORT=27017
+      - MONGO_DATABASE_NAME=xbrldatabase
+      - NODE_ENV=production
+      - NODE_HOSTNAME=nano-node-xbrl
+    networks:
+      - xbrl-proxy-explorer-net
+      - xbrl-explorer-redis-net
+      - xbrl-explorer-mongodb-net
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://127.0.0.1:80 || exit 1
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      xbrl-explorer-redis:
+        condition: service_healthy
+        restart: true
+      xbrl-explorer-mongodb:
+        condition: service_healthy
+        restart: true
+        
+  xbrl-wallet:
+    image: registry.blocky.com.br/xbrl-wallet:latest
+    build:
+      context: ./modules/xbrl-wallet
+      dockerfile: ./Dockerfile
+    container_name: xbrl_wallet
+    environment:
+      - SERVER_PORT=80
+    networks:
+      - xbrl-proxy-wallet-net
+    healthcheck:
+      test: curl --fail http://127.0.0.1:80 || exit 1
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+  
+  xbrl-work-server:
+    image: registry.blocky.com.br/xbrl-work-server:latest # Our image uses ROCm as a base image, for AMD specifically
+    build: ./modules/xbrl-work-server
+    container_name: xbrl_work_server
+    environment:
+      - CPU_THREADS=0 # If using GPU, set this to 0, and mount your gpu in devices, as well as OpenCL folders etc
+      - GPU=0:0:67108864
+      - LISTEN_HOST=0.0.0.0
+      - LISTEN_PORT=7013
+      - GPU_LOCAL_WORK_SIZE=256 # Optional: set this to your desired value
+      - SHUFFLE=true # Optional: set to "true" or "1" to enable shuffling
+    # That's for GPU pass (Specifically the AMD Radeon 5500 XT)
+    devices:
+      - "/dev/kfd:/dev/kfd"
+      - "/dev/dri:/dev/dri"
+    volumes:
+      - "/etc/OpenCL/vendors:/etc/OpenCL/vendors:ro"
+    ports:
+      - "127.0.0.1:7013:7013"
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - xbrl-pippin-work-net
+      - xbrl-node-rpc-proxy-nano-work-server-net
+    healthcheck:
+      test: curl http://127.0.0.1:7013 || exit 1
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+
+  xbrl-pippin:
+    image: registry.blocky.com.br/xbrl-pippin:latest
+    build:
+        context: ./modules/xbrl-pippin
+        dockerfile: ./Dockerfile
+    container_name: xbrl_pippin
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7019:11338"
+    volumes:
+      - "./data/xbrl-pippin-data:/root/PippinData"
+    environment:
+      - REDIS_HOST=xbrl-pippin-redis
+    networks:
+      - xbrl-pippin-redis-net
+      - xbrl-pippin-node-net
+      - xbrl-pippin-work-net
+    healthcheck:
+      test: ["CMD", "perl", "-MIO::Socket::INET", "-e", "$s=IO::Socket::INET->new('127.0.0.1:7019') or exit 1; print $s \"POST / HTTP/1.1\\r\\nHost: 127.0.0.1:7019\\r\\nContent-Type: application/json\\r\\nContent-Length: 24\\r\\nConnection: close\\r\\n\\r\\n{\\\"action\\\":\\\"block_count\\\"}\"; $s->shutdown(1); @res=<$s>; exit($res[0] =~ /^HTTP\\/1\\.1 200 OK/ ? 0 : 1);"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      xbrl-node:
+        condition: service_healthy
+        restart: true
+      xbrl-pippin-redis:
+        condition: service_healthy
+        restart: true
+      xbrl-work-server:
+        condition: service_healthy
+        restart: true
+
+
+  xbrl-blockycon:
+    image: registry.blocky.com.br/xbrl-blockycon:latest
+    build:
+      context: ./modules/xbrl-blockycon
+      dockerfile: ./Dockerfile
+    ports:
+      - "127.0.0.1:7010:5000" # blockycon.blocky.com.br
+    environment:
+      - HOST=0.0.0.0
+      - PORT=5000
+    volumes:
+      - "./data/xbrl-blockycon:/app/images"
+    networks:
+      - xbrl-proxy-blockycon-net
+
+  xbrl-pippin-redis:
+    image: docker.io/redis:7-alpine
+    container_name: xbrl_pippin_redis
+    restart: unless-stopped
+    networks:
+      - xbrl-pippin-redis-net
+    healthcheck:
+      test: ["CMD", "redis-cli","ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+  xbrl-explorer-redis:
+    image: docker.io/redis:7-alpine
+    container_name: xbrl_explorer_redis
+    restart: unless-stopped
+    volumes:
+      - ./data/xbrl-explorer-redis:/data
+    networks:
+      - xbrl-explorer-redis-net
+    healthcheck:
+      test: ["CMD", "redis-cli","ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+  xbrl-explorer-mongodb:
+    image: docker.io/mongo:latest
+    container_name: xbrl_explorer_mongodb
+    restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+    volumes:
+      - ./data/xbrl-explorer-mongodb:/data/db
+    networks:
+      - xbrl-explorer-mongodb-net
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+
+  xbrl-proxy:
+    image: docker.io/caddy:2.9-alpine
+    container_name: xbrl_proxy
+    ports:
+      - "7014:80" # blockycon.blocky.com.br # Public
+    volumes:
+      - ./config/xbrl-proxy/Caddyfile:/etc/caddy/Caddyfile
+    networks:
+      - xbrl-proxy-wallet-net
+      - xbrl-proxy-explorer-net
+      - xbrl-proxy-node-net
+      - xbrl-node-rpc-proxy-net
+      - xbrl-proxy-blockycon-net
+    healthcheck:
+      test: wget --spider -q --header="Host:wallet.xbrl.blocky.com.br" http://127.0.0.1:80/
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      xbrl-explorer:
+        condition: service_healthy
+        restart: true
+      xbrl-wallet:
+        condition: service_healthy
+        restart: true
+  xbrl-node-rpc-proxy:
+    image: docker.io/nanojson/nanorpcproxy:v1.4.5
+    container_name: xbrl_node_rpc_proxy
+    ports:
+      - "7016:9950" # rpc.xbrl.blocky.com.br # Public
+      - "7018:9952" # ws.xbrl.blocky.com.br # Public
+    volumes:
+      - "./config/xbrl-node-rpc-proxy:/root"
+    networks:
+      - xbrl-node-rpc-proxy-net
+      - xbrl-node-rpc-proxy-node-net
+      - xbrl-node-rpc-proxy-nano-work-server-net
+    healthcheck:
+      test: curl --fail http://127.0.0.1:9950 || exit 1
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 3s
+    depends_on:
+      xbrl-node:
+        condition: service_healthy
+        restart: true
+
+networks:
+  xbrl-proxy-wallet-net:
+    driver: bridge
+  xbrl-proxy-explorer-net:
+    driver: bridge
+  xbrl-proxy-node-net:
+    driver: bridge
+  xbrl-proxy-blockycon-net:
+    driver: bridge
+  xbrl-pippin-work-net:
+    driver: bridge
+  xbrl-pippin-node-net:
+    driver: bridge
+  xbrl-pippin-redis-net:
+    driver: bridge
+  xbrl-explorer-redis-net:
+    driver: bridge
+  xbrl-explorer-mongodb-net:
+    driver: bridge
+  xbrl-node-rpc-proxy-net:
+    driver: bridge
+  xbrl-node-rpc-proxy-node-net:
+    driver: bridge
+  xbrl-node-rpc-proxy-nano-work-server-net:
+    driver: bridge
